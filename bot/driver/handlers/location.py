@@ -149,8 +149,12 @@ async def cb_city_selected(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     state_name = data.get("selected_state", "Unknown")
     
-    await save_location(callback.from_user.id, state_name, city_name, 0.0, 0.0)
+    success = await save_location(callback.from_user.id, state_name, city_name, 0.0, 0.0)
     
+    if not success:
+         await callback.message.answer("⚠️ <b>User not found!</b>\nPlease run /start to register first.", parse_mode="HTML")
+         return
+
     await callback.message.delete()
     await callback.message.answer(t("location_saved", state=state_name, city=city_name), parse_mode="HTML")
     await callback.answer()
@@ -164,7 +168,11 @@ async def handle_location(message: Message, state: FSMContext):
     # Use existing reverse geocoding service
     res_state, res_city, _, _ = get_location_by_coords(lat, lon)
     
-    await save_location(message.from_user.id, res_city, res_state, lat, lon)
+    success = await save_location(message.from_user.id, res_city, res_state, lat, lon)
+    
+    if not success:
+         await message.answer("⚠️ <b>User not found!</b>\nPlease run /start to register first.", parse_mode="HTML")
+         return
     
     await state.clear()
     await message.answer(t("location_saved", state=res_state, city=res_city), parse_mode="HTML")
@@ -183,6 +191,13 @@ async def handle_location(message: Message, state: FSMContext):
 
 async def save_location(user_id, city, state, lat, lon):
     async with async_session_factory() as session:
+        # Check if user exists first or handle integrity error
+        # Just checking is cleaner for logic flow here
+        from sqlalchemy import select
+        user_exists = await session.scalar(select(DBUser).where(DBUser.user_id == user_id))
+        if not user_exists:
+            return False
+
         stmt = insert(DBLocation).values(
             user_id=user_id,
             city=city,
@@ -208,3 +223,4 @@ async def save_location(user_id, city, state, lat, lon):
         )
         
         await session.commit()
+        return True
