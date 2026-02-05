@@ -133,33 +133,71 @@ async def cb_find_city(callback: CallbackQuery):
     await callback.answer()
 
 async def execute_find(message: Message, state_query, city_query):
-    async with async_session_factory() as session:
-        q = select(User).join(Location).options(selectinload(User.location)).where(User.status == 'active')
+    # 1. Resolve Target Location (Lat/Lon)
+    target_lat, target_lon = None, None
+    search_term = ""
+    
+    if city_query and state_query:
+        search_term = f"{city_query}, {state_query}"
+    elif state_query:
+        search_term = state_query
+    elif city_query:
+        search_term = city_query
         
-        if state_query:
-            full_state_name = None
-            if len(state_query) == 2:
-                full_state_name = US_STATES.get(state_query.upper())
-            
-            if full_state_name:
-                 q = q.where(or_(Location.state.ilike(f"%{state_query}%"), Location.state.ilike(f"%{full_state_name}%")))
-            else:
-                 q = q.where(Location.state.ilike(f"%{state_query}%"))
-            
-        if city_query:
-            q = q.where(Location.city.ilike(f"%{city_query}%"))
-            
-        result = await session.execute(q)
-        users = result.scalars().all()
-
+    if search_term:
+        from bot.common.services.geocoding import get_location_by_query, calculate_distance
+        loc_res = get_location_by_query(search_term)
+        if loc_res:
+             _, _, target_lat, target_lon = loc_res
+    
+    # 2. Fetch Users
+    users = await get_all_active_users()
+    
     if not users:
-        text = f"❌ No active drivers found in {city_query or state_query}."
-        if isinstance(message, Message): await message.answer(text)
-        else: await message.edit_text(text)
+        await message.answer("⚠️ No active drivers found in database.")
         return
 
-    text = ""
-    for u in users:
+    # 3. Filter/Sort Logic
+    results = [] # List of tuples (User, Distance)
+    
+    if target_lat is not None and target_lon is not None:
+        # Distance-based sort
+        for u in users:
+            if u.location and u.location.latitude and u.location.longitude:
+                dist = calculate_distance(target_lat, target_lon, u.location.latitude, u.location.longitude)
+                results.append((u, dist))
+            else:
+                # Users without location go to bottom if we are sorting by distance
+                results.append((u, float('inf')))
+        
+        # Sort by distance (asc)
+        results.sort(key=lambda x: x[1])
+        
+        # Take Top 10
+        results = results[:10]
+        match_type = f"📍 <b>Nearest to {search_term}:</b>"
+        
+    else:
+        # Fallback to Text Match (Old Logic) if Geocoding Fails
+        # Or if we just want to match text strictly.
+        # But user requested "proximity", so if geocoding fails, we might just warn.
+        # Let's keep a basic text filter as backup.
+        match_type = f"🔍 <b>Text Matches for '{search_term}':</b>"
+        for u in users:
+            u_loc_str = f"{u.location.city} {u.location.state}" if u.location else ""
+            if city_query and city_query.lower() in u_loc_str.lower():
+                results.append((u, -1))
+            elif state_query and state_query.lower() in u_loc_str.lower():
+                results.append((u, -1))
+        
+        if not results and search_term:
+             await message.answer(f"❌ Location '{search_term}' not found and no text matches.")
+             return
+             
+    # 4. Generate Output
+    text = f"{match_type}\n\n"
+    
+    for u, dist in results:
         stars = get_star_rating(u.rating_score)
         
         now = datetime.now(timezone.utc)
@@ -168,15 +206,22 @@ async def execute_find(message: Message, state_query, city_query):
         
         diff = now - last_active
         if diff.total_seconds() < 3600:
-            seen = f"{int(diff.total_seconds()/60)} mins ago"
+            seen = f"{int(diff.total_seconds()/60)}m ago"
         else:
-            seen = f"{int(diff.total_seconds()/3600)} hours ago"
+            seen = f"{int(diff.total_seconds()/3600)}h ago"
         
         username_link = f"<a href='tg://user?id={u.user_id}'>{u.full_name or 'Driver'}</a>"
         
+        loc_str = f"{u.location.city}, {u.location.state}" if u.location else "Unknown"
+        
+        dist_str = ""
+        if dist != float('inf') and dist != -1:
+            dist_str = f"\n📏 <b>{dist:.1f} miles away</b>"
+        
         text += (
             f"👤 {username_link}\n"
-            f"📍 {u.location.city}, {u.location.state} | 🕒 {seen}\n"
+            f"📍 {loc_str} | 🕒 {seen}"
+            f"{dist_str}\n"
             f"⭐️ {stars} ({u.rating_score:.1f}) | 🆔 <code>{u.user_id}</code>\n"
             f"👉 /rate_{u.user_id}\n\n"
         )

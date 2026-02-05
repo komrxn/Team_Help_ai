@@ -45,3 +45,16 @@ def get_location_by_coords(lat: float, lon: float) -> Optional[Tuple[str, str, f
     except Exception as e:
         print(f"Reverse Geocoding error: {e}")
         return "GPS", "Location", lat, lon
+
+def calculate_distance(lat1, lon1, lat2, lon2) -> float:
+    """
+    Calculate distance in miles between two coordinates.
+    """
+    from geopy.distance import geodesic
+    try:
+        # geodesic expects (lat, lon) tuples
+        # returns distance object, we want miles
+        return geodesic((lat1, lon1), (lat2, lon2)).miles
+    except Exception as e:
+        print(f"Distance calc error: {e}")
+        return float('inf')
