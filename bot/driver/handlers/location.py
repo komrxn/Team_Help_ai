@@ -143,13 +143,28 @@ async def cb_back_states(callback: CallbackQuery):
     await show_states_menu(callback, page=0)
     await callback.answer()
 
-@router.callback_query(F.data.startswith("set_city_"))
-async def cb_city_selected(callback: CallbackQuery, state: FSMContext):
     city_name = callback.data.replace("set_city_", "")
     data = await state.get_data()
     state_name = data.get("selected_state", "Unknown")
     
-    success = await save_location(callback.from_user.id, state_name, city_name, 0.0, 0.0)
+    # Resolving coordinates for manual selection
+    lat, lon = 0.0, 0.0
+    try:
+        query = f"{city_name}, {state_name}"
+        # Running in executor to avoid blocking event loop
+        import asyncio
+        from bot.common.services.geocoding import get_location_by_query
+        
+        loop = asyncio.get_running_loop()
+        # Run blocking geocode in separate thread
+        loc_res = await loop.run_in_executor(None, get_location_by_query, query)
+        
+        if loc_res:
+            _, _, lat, lon = loc_res
+    except Exception as e:
+        print(f"Manual geocoding failed: {e}")
+    
+    success = await save_location(callback.from_user.id, state_name, city_name, lat, lon)
     
     if not success:
          await callback.message.answer("⚠️ <b>User not found!</b>\nPlease run /start to register first.", parse_mode="HTML")
