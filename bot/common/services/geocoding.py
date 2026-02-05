@@ -33,7 +33,7 @@ def get_location_by_coords(lat: float, lon: float) -> Optional[Tuple[str, str, f
     """
     try:
         # Reverse geocode
-        loc: Location = geolocator.reverse((lat, lon), exactly_one=True, addressdetails=True)
+        loc: Location = geolocator.reverse((lat, lon), exactly_one=True, addressdetails=True, timeout=10)
         if not loc:
             return "GPS", "Location", lat, lon
             
