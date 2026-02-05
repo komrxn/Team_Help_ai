@@ -43,9 +43,14 @@ async def recalculate_rating(user_id: int):
                 weighted_good += (1.0 * weight)
             # if bad, add nothing to weighted_good, but add to total
         
-        # Bayesian Smoothing (Laplace smoothing variant as requested)
-        # score = (good + 1) / (total + 2)
-        score = (weighted_good + 1) / (weighted_total + 2)
+        # Bayesian Smoothing with Prior for 4.0 start
+        # We want initial score 0.75 (which maps to 4.0 stars: 1 + 4*0.75)
+        # 0.75 = PRIOR_GOOD / PRIOR_TOTAL
+        # Let's use PRIOR_TOTAL = 20, PRIOR_GOOD = 15
+        PRIOR_GOOD = 15.0
+        PRIOR_TOTAL = 20.0
+        
+        score = (weighted_good + PRIOR_GOOD) / (weighted_total + PRIOR_TOTAL)
         
         # Confidence
         # confidence = 1 - exp(-total / 7)
