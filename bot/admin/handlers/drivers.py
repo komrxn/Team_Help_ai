@@ -163,11 +163,21 @@ async def execute_find(message: Message, state_query, city_query):
     if target_lat is not None and target_lon is not None:
         # Distance-based sort
         for u in users:
-            if u.location and u.location.latitude and u.location.longitude:
-                dist = calculate_distance(target_lat, target_lon, u.location.latitude, u.location.longitude)
-                results.append((u, dist))
+            if u.location and u.location.latitude is not None and u.location.longitude is not None:
+                try:
+                    # Enforce float
+                    u_lat = float(u.location.latitude)
+                    u_lon = float(u.location.longitude)
+                    t_lat = float(target_lat)
+                    t_lon = float(target_lon)
+                    
+                    dist = calculate_distance(t_lat, t_lon, u_lat, u_lon)
+                    results.append((u, dist))
+                except Exception as e:
+                    print(f"Driver {u.user_id} loc error: {e}")
+                    results.append((u, float('inf')))
             else:
-                # Users without location go to bottom if we are sorting by distance
+                # Users without location go to bottom
                 results.append((u, float('inf')))
         
         # Sort by distance (asc)
@@ -217,6 +227,8 @@ async def execute_find(message: Message, state_query, city_query):
         dist_str = ""
         if dist != float('inf') and dist != -1:
             dist_str = f"\n📏 <b>{dist:.1f} miles away</b>"
+        elif dist == float('inf') and match_type.startswith("📍"):
+            dist_str = "\n⚠️ <i>Dist calc error</i>"
         
         text += (
             f"👤 {username_link}\n"
