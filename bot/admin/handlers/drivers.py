@@ -201,12 +201,15 @@ async def execute_find(message: Message, state_query, city_query):
                 results.append((u, -1))
         
         if not results and search_term:
-             await message.answer(f"❌ Location '{search_term}' not found and no text matches.")
+             await message.answer(f"❌ Location '{search_term}' not found (Geocoding failed) and no text matches.")
              return
              
     # 4. Generate Output
     text = f"{match_type}\n\n"
     
+    if target_lat is None and search_term and "Nearest" not in match_type and "Text Matches" in match_type:
+         text = f"⚠️ <b>Geocoding Service Unavailable/Timed Out.</b>\nShowing exact text matches only.\n\n" + text
+
     for u, dist in results:
         stars = get_star_rating(u.rating_score)
         

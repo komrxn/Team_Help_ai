@@ -11,7 +11,7 @@ def get_location_by_query(query: str) -> Optional[Tuple[str, str, float, float]]
     """
     try:
         # Limit to USA for better accuracy
-        loc: Location = geolocator.geocode(query, addressdetails=True, country_codes="us")
+        loc: Location = geolocator.geocode(query, addressdetails=True, country_codes="us", timeout=10)
         if not loc:
             return None
         
